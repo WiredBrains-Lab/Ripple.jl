@@ -1,7 +1,7 @@
 name = "Ripple"
 uuid = "eb854143-3a4d-4e07-9345-f0e999910b68"
 authors = ["Bill Gross"]
-version = "1.0.0-DEV"
+version = "1.0.0"
 
 [deps]
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
