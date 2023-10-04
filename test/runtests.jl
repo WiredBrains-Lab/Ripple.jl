@@ -1,13 +1,15 @@
 using Ripple
 using Test
 
-using BSON,Dates
+using Dates
 
 nfx_file = read_nfx(joinpath(@__DIR__,"test.nf3"))
-bson_data = BSON.load(joinpath(@__DIR__,"test.bson"))[:data]
+known_data = Matrix{Float32}(undef,16048,1)
+open("test.raw") do f
+    read!(f,known_data)
+end
 
 @testset "Ripple.jl" begin
-    @test nfx_file.header.application==""
     @test nfx_file.header.comments=="1.14.4.41 Trellis[]"
     @test nfx_file.header.num_channels==1
     @test nfx_file.header.label=="2 ksamp/sec"
@@ -33,5 +35,5 @@ bson_data = BSON.load(joinpath(@__DIR__,"test.bson"))[:data]
     @test nfx_file.channel_headers[1].units=="uV"
     @test length(nfx_file.data_packets)==1
     @test nfx_file.data_packets[1].timestamp==0
-    @test nfx_file.data_packets[1].data==bson_data
+    @test nfx_file.data_packets[1].data==known_data
 end
