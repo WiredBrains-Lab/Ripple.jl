@@ -251,7 +251,7 @@ function read_nsx(fname::String)
                 end
             end
 
-            push!(packets,NxPacket(timestamp,hcat(data...)'))
+            push!(packets,NxPacket(timestamp,collect(hcat(data...)')))
 
             
         end
