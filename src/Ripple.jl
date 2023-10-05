@@ -245,8 +245,8 @@ function read_nsx(fname::String)
             timestamp = readint(timestamp_bytes)
             num_points = readint(32)
 
-            data = map(1:num_channels) do c
-                map(1:num_points) do i
+            data = map(1:num_points) do i
+                map(1:num_channels) do c
                     read(f,Int16)
                 end
             end
