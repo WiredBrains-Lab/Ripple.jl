@@ -1,7 +1,8 @@
 module Ripple
 
 export NxChannelHeader,NxHeader,NxPacket,NxFile
-export read_nfx,read_nsx
+export NEVFile,NEVHeader,NEVExtendedHeader,NEVDigitalInput,NEVDigitalLabel,NEVPacket
+export read_nfx,read_nsx,read_nev
 
 using Dates
 
@@ -69,13 +70,51 @@ struct NxFile
     data_packets::Vector{NxPacket}
 end
 
+abstract type NEVExtendedHeader end
+
+_nev_digitallabel_modes = Dict(0=>:serial,1=>:parallel)
+struct NEVDigitalLabel <: NEVExtendedHeader
+    label::String
+    mode::Symbol
+end
+
+abstract type NEVPacket end
+
+struct NEVDigitalInput <: NEVPacket
+    timestamp::Int
+    reason::NamedTuple
+    values::NamedTuple
+end
+
+struct NEVHeader
+    version::Tuple{Int,Int}
+    flags::NamedTuple
+    
+    clock_frequency::Float64
+    sample_frequency::Float64
+    
+    utc_time::DateTime
+    
+    application::String
+    comment::String
+    
+    timestamp::Int
+    
+    extended_headers::Vector{NEVExtendedHeader}
+end
+
+struct NEVFile
+    header::NEVHeader
+    packets::Vector{NEVPacket}
+end
+
 """
     function read_nfx(fname::String)
 
 Read the NFx file `fname` and return a [`NxFile`](@ref).
 """
 function read_nfx(fname::String)
-    match(r"\.nf[1-9]$",fname)==nothing && warn("Attempting to load $fname as NFx, but suffix does not match!")
+    match(r"\.nf[1-9]$",fname)==nothing && @warn("Attempting to load $fname as NFx, but suffix does not match!")
 
     open(fname) do f
         # A quick helper function to make reading all these Int's easy
@@ -170,7 +209,7 @@ end
 Read the NSx file `fname` and return a [`NxFile`](@ref).
 """
 function read_nsx(fname::String)
-    match(r"\.ns[1-9]$",fname)==nothing && warn("Attempting to load $fname as NSx, but suffix does not match!")
+    match(r"\.ns[1-9]$",fname)==nothing && @warn("Attempting to load $fname as NSx, but suffix does not match!")
 
     open(fname) do f
         magic = read(f,8)
@@ -257,6 +296,123 @@ function read_nsx(fname::String)
         end
 
     return NxFile(header,channel_headers,packets)
+    end
+end
+
+"""
+    function read_nev(fname::String)
+
+Read the NEV file `fname` and return a [`NEVFile`](@ref).
+
+This method is still under contruction. Several of the extended headers and packet types were
+not implemented yet.
+
+This method is based on the NEV 2.2 file format as specified by Ripple from their [documentation](https://rippleneuro.s3-us-west-2.amazonaws.com/downloads/documentation/NEVspec2_2_v07.pdf)
+"""
+function read_nev(fname::String)
+    match(r"\.nev$",fname)==nothing && @warn("Attempting to load $fname as NEV, but suffix does not match!")
+
+    open(fname) do f
+        magic = read(f,8)
+        @assert magic == b"NEURALEV"
+    
+        uints = Dict(8=>UInt8,16=>UInt16,32=>UInt32,64=>UInt64)
+        readint(n::Int) = Int(read(f,uints[n]))
+
+        ver_major = readint(8)
+        ver_minor = readint(8)
+        flagsbits = readint(16)
+        flags = (
+            spikewaveforms16bit = (flagsbits & 0x01)!=0,
+        )
+        header_size = readint(32)
+    
+        packet_size = readint(32)
+    
+        clock_frequency = readint(32)
+        sample_frequency = readint(32)
+
+        utc_time = begin
+            year = readint(16)
+            month = readint(16)
+            dow = readint(16)
+            day = readint(16)
+            hour = readint(16)
+            minute = readint(16)
+            second = readint(16)
+            ms = readint(16)
+            DateTime(year,month,day,hour,minute,second,ms)
+        end 
+    
+        application = nullstring(read(f,32))
+        comment = nullstring(read(f,200))
+        
+        # reserved
+        skip(f,52)
+        
+        timestamp = readint(32)
+    
+        num_headers = readint(32)
+    
+        extended_headers = NEVExtendedHeader[]
+        for i=1:num_headers
+            magic = read(f,8)
+    
+            if magic==b"DIGLABEL"
+                label = nullstring(read(f,16))
+                mode = readint(8)
+                push!(extended_headers,NEVDigitalLabel(label,_nev_digitallabel_modes[mode]))
+                skip(f,7)
+                continue
+            end
+        
+            @warn("Have not implemented Extended Header named \"$(String(magic))\" yet!")
+            skip(f,24)
+        end
+        
+        header = NEVHeader(
+            (ver_major,ver_minor),flags,
+            clock_frequency,sample_frequency,utc_time,
+            application,comment,timestamp,
+            extended_headers)
+    
+        @assert position(f) == header_size
+    
+        packets = NEVPacket[]
+    
+        while ! eof(f)
+            timestamp = readint(32)
+            id=readint(16)
+
+            if id==0
+                bitreason = read(f,UInt8)
+                reason = (
+                    parallel = (bitreason & 0x01)!=0,
+                    sma1 = (bitreason & 0x02)!=0,
+                    sma2 = (bitreason & 0x04)!=0,
+                    sma3 = (bitreason & 0x08)!=0,
+                    sma4 = (bitreason & 0x10)!=0,
+                    periodic = (bitreason & 0x40)!=0,
+                    serial = (bitreason & 0x80)!=0
+                )
+                skip(f,1)
+                values = (
+                    parallel = readint(16),
+                    sma1 = read(f,Int16),
+                    sma2 = read(f,Int16),
+                    sma3 = read(f,Int16),
+                    sma4 = read(f,Int16),
+                )
+                push!(packets,NEVDigitalInput(timestamp,reason,values))
+                skip(f,packet_size - 18)
+                continue
+            end
+        
+            @warn("Have not implemented Packet with ID $id yet!")
+            skip(f,packet_size - 6)
+        end
+        
+        NEVFile(header,packets)
     end
 end
 
