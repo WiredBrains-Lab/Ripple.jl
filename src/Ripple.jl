@@ -13,7 +13,7 @@ using Dates
 """
 nullstring(x::Vector{UInt8}) = String(x[1:findfirst(==(0), x) - 1])
 
-calc_gain(phys_min,phys_max,dig_min,dig_max) = (phys_max - phys_min) / (dig_max - dig_min)
+calc_gain(phys_min,phys_max,dig_min,dig_max) = (Float64(phys_max) - Float64(phys_min)) / (Float64(dig_max) - Float64(dig_min))
 calc_offset(gain,phys_max,dig_max) = phys_max - gain * dig_max
 physical(x::T,gain::K,offset::L) where {T<:Real,K<:Real,L<:Real} = gain * x + offset
 
