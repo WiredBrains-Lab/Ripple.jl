@@ -201,13 +201,13 @@ function read_nfx(fname::String;applygain=true)
             timestamp = readint(32)
             num_points = readint(32)
 
-            data = map(1:num_channels) do c
-                map(1:num_points) do i
+            data = map(1:num_points) do i
+                map(1:num_channels) do c
                     read(f,Float32)
                 end
             end
 
-            data = hcat(data...)
+            data = collect(hcat(data...)')
 
             if applygain
                 for c=1:num_channels
