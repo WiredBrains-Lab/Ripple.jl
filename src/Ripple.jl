@@ -13,6 +13,10 @@ using Dates
 """
 nullstring(x::Vector{UInt8}) = String(x[1:findfirst(==(0), x) - 1])
 
+calc_gain(phys_min,phys_max,dig_min,dig_max) = (phys_max - phys_min) / (dig_max - dig_min)
+calc_offset(gain,phys_max,dig_max) = phys_max - gain * dig_max
+physical(x::T,gain::K,offset::L) where {T<:Real,K<:Real,L<:Real} = gain * x + offset
+
 _nx_filtertype = [:none,:Butterworth,:Chebyshev]
 
 struct NxChannelHeader
@@ -31,6 +35,8 @@ struct NxChannelHeader
     lowpass_freq::Float64
     lowpass_order::Int
     lowpass_type::Symbol
+    gain::Float64
+    offset::Float64
 end
 
 struct NxHeader
@@ -109,11 +115,13 @@ struct NEVFile
 end
 
 """
-    function read_nfx(fname::String)
+    function read_nfx(fname::String; applygain=true)
 
 Read the NFx file `fname` and return a [`NxFile`](@ref).
+
+If `applygain` is `true`, will automatically apply the calculated gain and offset to the data.
 """
-function read_nfx(fname::String)
+function read_nfx(fname::String;applygain=true)
     match(r"\.nf[1-9]$",fname)==nothing && @warn("Attempting to load $fname as NFx, but suffix does not match!")
 
     open(fname) do f
@@ -172,12 +180,16 @@ function read_nfx(fname::String)
             lowpass_order = readint(32)
             lowpass_type = readint(16)
 
+            gain = calc_gain(analog_min,analog_max,digital_min,digital_max)
+            offset = calc_offset(gain,analog_max,digital_max)
+
             NxChannelHeader(
                 id,label,frontend_id,frontend_pin,
                 digital_min,digital_max,analog_min,analog_max,
                 units,
                 highpass_freq/1000,highpass_order,_nx_filtertype[highpass_type+1],
                 lowpass_freq/1000,lowpass_order,_nx_filtertype[lowpass_type+1],
+                gain,offset
             )
         end
         @assert position(f) == header_size
@@ -195,7 +207,15 @@ function read_nfx(fname::String)
                 end
             end
 
-            push!(packets,NxPacket(timestamp,hcat(data...)))
+            data = hcat(data...)
+
+            if applygain
+                for c=1:num_channels
+                    data[:,c] .= physical.(data[:,c],channel_headers[c].gain,channel_headers[c].offset)
+                end
+            end
+
+            push!(packets,NxPacket(timestamp,data))
         end
 
         return NxFile(header,channel_headers,packets)
@@ -207,8 +227,10 @@ end
     function read_nsx(fname::String)
 
 Read the NSx file `fname` and return a [`NxFile`](@ref).
+
+If `applygain` is `true`, will automatically apply the calculated gain and offset to the data.
 """
-function read_nsx(fname::String)
+function read_nsx(fname::String;applygain=true)
     match(r"\.ns[1-9]$",fname)==nothing && @warn("Attempting to load $fname as NSx, but suffix does not match!")
 
     open(fname) do f
@@ -267,12 +289,16 @@ function read_nsx(fname::String)
             lowpass_order = readint(32)
             lowpass_type = readint(16)
 
+            gain = calc_gain(analog_min,analog_max,digital_min,digital_max)
+            offset = calc_offset(gain,analog_max,digital_max)
+
             NxChannelHeader(
                 id,label,frontend_id,frontend_pin,
                 digital_min,digital_max,analog_min,analog_max,
                 units,
                 highpass_freq/1000,highpass_order,_nx_filtertype[highpass_type+1],
                 lowpass_freq/1000,lowpass_order,_nx_filtertype[lowpass_type+1],
+                gain,offset
             )
         end
         @assert position(f) == header_size
@@ -290,7 +316,18 @@ function read_nsx(fname::String)
                 end
             end
 
-            push!(packets,NxPacket(timestamp,collect(hcat(data...)')))
+            data = collect(hcat(data...)')
+
+            if applygain
+                # This reads as Int's, so make a new Float matrix
+                newdata = Matrix{Float64}(undef,size(data))
+                for c=1:num_channels
+                    newdata[:,c] .= physical.(data[:,c],channel_headers[c].gain,channel_headers[c].offset)
+                end
+                data = newdata
+            end
+
+            push!(packets,NxPacket(timestamp,data))
 
             
         end
