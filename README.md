@@ -2,7 +2,7 @@
 
 Utilities to interact with [Ripple](https://rippleneuromed.com) systems.
 
-[![Build Status](https://github.com/bgross/Ripple.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/bgross/Ripple.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Build Status](https://github.com/WiredBrains-Lab/Ripple.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/WiredBrains-Lab/Ripple.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
 A work in progress. Not all functions are currently implemented, but I believe what is there is currently functional. Please let me know if you find errors.
 
